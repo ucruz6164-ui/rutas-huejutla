@@ -1,0 +1,10 @@
+{
+  "name": "rutas-huejutla",
+  "version": "1.0.0",
+  "description": "Rutas de combis de Huejutla: aplicacion web sobre Neo4j AuraDB",
+  "main": "servidor.js",
+  "private": true,
+  "dependencies": {
+    "neo4j-driver": "^5.28.1"
+  }
+}

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>La red · Rutas de Huejutla</title>
+<link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+<main>
+  <h1>La red de combis</h1>
+  <p class="nota">Cada circulo es un nodo <b>Parada</b>; cada linea, una relacion <b>TRAMO</b> del color de su ruta.</p>
+  <form class="tarjeta campos" id="filtro">
+    <label>¿Que alcanzo desde? <select id="origen"></select></label>
+    <label>En cuantos minutos <select id="minutos"><option>10</option><option selected>15</option><option>20</option><option>30</option></select></label>
+  </form>
+  <div id="aviso"></div>
+  <section id="mapa"></section>
+  <div class="rejilla">
+    <section class="tarjeta">
+      <h2>Rutas</h2>
+      <div id="rutas" style="display:grid;gap:8px"></div>
+    </section>
+    <section class="tarjeta">
+      <h2>Mejores paradas para transbordar</h2>
+      <div class="tabla"><table><thead><tr><th>Parada</th><th>Rutas que pasan</th></tr></thead><tbody id="conectadas"></tbody></table></div>
+    </section>
+  </div>
+  <div id="cypher"></div>
+</main>
+<script src="app.js"></script>
+<script>
+menu("red.html");
+let red;
+
+async function iniciar() {
+  red = await api("/red");                                    // GET /api/red
+  const s = document.getElementById("origen");
+  for (const p of red.paradas) { const o = el("option", null, p.nombre); o.value = p.id; s.append(o); }
+  s.value = "centro";
+  for (const r of red.rutas) {                                 // cada ruta con sus paradas en orden
+    const d = el("div", "paso");
+    d.append(etiquetaRuta(r.id, r.color), el("span", null, r.nombre + " · $" + r.pasaje + ": " + r.paradas.join(" → ")));
+    document.getElementById("rutas").append(d);
+  }
+  const c = await api("/conectadas");                          // GET /api/conectadas
+  for (const f of c.conectadas) {
+    const tr = el("tr");
+    tr.append(el("td", null, f.nombre), el("td", null, f.rutas + " (" + f.cuales.join(", ") + ")"));
+    document.getElementById("conectadas").append(tr);
+  }
+  await cargarAlcance(red.cypher.concat(c.cypher));
+}
+
+async function cargarAlcance(previas = []) {
+  try {
+    const origen = document.getElementById("origen").value, minutos = document.getElementById("minutos").value;
+    const r = await api("/alcance?origen=" + origen + "&minutos=" + minutos);   // GET /api/alcance
+    const marcas = { [origen]: 0 };
+    for (const p of r.alcance) marcas[p.id] = p.minutos;
+    dibujarMapa(document.getElementById("mapa"), red, { alcance: marcas });
+    verCypher(document.getElementById("cypher"), previas.concat(r.cypher));
+  } catch (e) { aviso(document.getElementById("aviso"), e.message, "error"); }
+}
+
+document.getElementById("filtro").addEventListener("change", () => cargarAlcance());
+iniciar().catch(e => aviso(document.getElementById("aviso"), e.message, "error"));
+</script>
+</body>
+</html>

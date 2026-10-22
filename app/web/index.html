@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Como llego · Rutas de Huejutla</title>
+<link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+<main>
+  <h1>¿Como llego?</h1>
+  <p class="nota">Neo4j recorre el grafo de paradas y tramos y te recomienda las 3 mejores opciones: menos tiempo total (cada transbordo suma 5 minutos de espera) y, si empatan, menor costo.</p>
+  <form class="tarjeta campos" id="buscar">
+    <label>Desde <select id="origen"></select></label>
+    <label>Hasta <select id="destino"></select></label>
+    <label>&nbsp;<button type="submit">Buscar ruta</button></label>
+  </form>
+  <div id="aviso"></div>
+  <div class="rejilla" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+    <section id="opciones" style="display:grid;gap:12px;align-content:start"></section>
+    <section id="mapa"></section>
+  </div>
+  <section class="tarjeta" style="justify-items:center;text-align:center">
+    <h2>Abre esta pagina en tu celular</h2>
+    <div id="qr" style="background:#fff;padding:8px;border-radius:8px;line-height:0"></div>
+    <p class="nota">El puerto 3000 debe estar en Public.</p>
+  </section>
+  <div id="cypher"></div>
+</main>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script src="app.js"></script>
+<script>
+menu("index.html");
+let red;                                                  // paradas, tramos y rutas (para nombres y colores)
+const nombre = id => red.paradas.find(p => p.id === id).nombre;
+const colorDe = ruta => red.rutas.find(r => r.id === ruta).color;
+
+async function iniciar() {
+  red = await api("/red");                                // GET /api/red
+  for (const id of ["origen", "destino"]) {
+    const s = document.getElementById(id);
+    for (const p of red.paradas) { const o = el("option", null, p.nombre); o.value = p.id; s.append(o); }
+  }
+  document.getElementById("origen").value = "rio";
+  document.getElementById("destino").value = "uthh";
+  dibujarMapa(document.getElementById("mapa"), red);
+}
+
+// Convierte la lista de tramos en instrucciones: "Sube a R1 en X y baja en Y (n paradas)"
+function pasos(op) {
+  const lista = [];
+  let inicio = 0;
+  for (let i = 1; i <= op.rutas.length; i++) {
+    if (i === op.rutas.length || op.rutas[i] !== op.rutas[i - 1]) {
+      lista.push({ ruta: op.rutas[inicio], desde: op.paradas[inicio], hasta: op.paradas[i], paradas: i - inicio });
+      inicio = i;
+    }
+  }
+  return lista;
+}
+
+function mostrar(r) {
+  const cont = document.getElementById("opciones");
+  cont.textContent = "";
+  if (!r.opciones.length) { aviso(cont, "No hay forma de llegar: revisa si hay tramos cerrados.", "error"); dibujarMapa(document.getElementById("mapa"), red); return; }
+  r.opciones.forEach((op, k) => {
+    const t = el("article", "tarjeta opcion" + (k === 0 ? " activa" : ""));
+    t.append(el("h3", null, (k === 0 ? "Recomendada · " : "Opcion " + (k + 1) + " · ") + op.tiempoTotal + " min"),
+      el("p", "nota", op.minutos + " min en combi · " + op.transbordos + " transbordo(s) · $" + op.costo));
+    for (const p of pasos(op)) {
+      const linea = el("div", "paso");
+      linea.append(etiquetaRuta(p.ruta, colorDe(p.ruta)), el("span", null, "Sube en " + nombre(p.desde) + " y baja en " + nombre(p.hasta) + " (" + p.paradas + " tramo" + (p.paradas > 1 ? "s" : "") + ")"));
+      t.append(linea);
+    }
+    t.addEventListener("click", () => {
+      cont.querySelectorAll(".opcion").forEach(x => x.classList.remove("activa"));
+      t.classList.add("activa");
+      dibujarMapa(document.getElementById("mapa"), red, { camino: op.paradas, rutas: op.rutas });
+    });
+    cont.append(t);
+  });
+  dibujarMapa(document.getElementById("mapa"), red, { camino: r.opciones[0].paradas, rutas: r.opciones[0].rutas });
+}
+
+document.getElementById("buscar").addEventListener("submit", async evento => {
+  evento.preventDefault();
+  try {
+    const origen = document.getElementById("origen").value, destino = document.getElementById("destino").value;
+    const r = await api("/como-llego?origen=" + origen + "&destino=" + destino);   // GET /api/como-llego
+    mostrar(r);
+    verCypher(document.getElementById("cypher"), r.cypher);
+    aviso(document.getElementById("aviso"), "");
+  } catch (e) { aviso(document.getElementById("aviso"), e.message, "error"); }
+});
+
+// Codigo QR hacia esta misma pagina
+try {
+  const q = qrcode(0, "M"); q.addData(location.origin + "/index.html"); q.make();
+  document.getElementById("qr").innerHTML = q.createSvgTag(5, 2);
+} catch (e) { /* sin internet no se dibuja el QR */ }
+
+iniciar().catch(e => aviso(document.getElementById("aviso"), e.message, "error"));
+</script>
+</body>
+</html>

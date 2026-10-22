@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tramos · Rutas de Huejutla</title>
+<link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+<main>
+  <h1>Cerrar o abrir tramos</h1>
+  <p class="nota">Simula una calle cerrada: la API cambia la propiedad <b>cerrado</b> de la relacion TRAMO con un <b>SET</b>. Despues busca una ruta en "Como llego" y mira como cambian las recomendaciones.</p>
+  <div id="aviso"></div>
+  <section id="mapa"></section>
+  <section class="tarjeta">
+    <div class="tabla"><table>
+      <thead><tr><th>Ruta</th><th>Tramo</th><th>Minutos</th><th>Estado</th></tr></thead>
+      <tbody id="tramos"></tbody>
+    </table></div>
+  </section>
+  <div id="cypher"></div>
+</main>
+<script src="app.js"></script>
+<script>
+menu("tramos.html");
+
+async function cargar(previas = []) {
+  try {
+    const red = await api("/red");                             // GET /api/red
+    const nombre = id => red.paradas.find(p => p.id === id).nombre;
+    dibujarMapa(document.getElementById("mapa"), red);
+    const tb = document.getElementById("tramos");
+    tb.textContent = "";
+    for (const t of red.tramos) {
+      const tr = el("tr");
+      const ruta = el("td"); ruta.append(etiquetaRuta(t.ruta, t.color));
+      const boton = el("button", null, t.cerrado ? "Cerrado · abrir" : "Abierto · cerrar");
+      if (t.cerrado) boton.style.background = "#B3261E";
+      boton.addEventListener("click", async () => {
+        try {
+          // POST /api/tramos/alternar : cierra o abre el tramo entre dos paradas
+          const r = await api("/tramos/alternar", "POST", { a: t.a, b: t.b });
+          cargar(r.cypher);
+        } catch (e) { aviso(document.getElementById("aviso"), e.message, "error"); }
+      });
+      const estado = el("td"); estado.append(boton);
+      tr.append(ruta, el("td", null, nombre(t.a) + " – " + nombre(t.b)), el("td", null, t.minutos), estado);
+      tb.append(tr);
+    }
+    verCypher(document.getElementById("cypher"), previas.concat(red.cypher));
+  } catch (e) { aviso(document.getElementById("aviso"), e.message, "error"); }
+}
+cargar();
+</script>
+</body>
+</html>
