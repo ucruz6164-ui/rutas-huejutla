@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Parada · Rutas de Huejutla</title>
+<link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+<main>
+  <p><a href="red.html">← La red</a></p>
+  <h1 id="titulo">Parada</h1>
+  <div id="aviso"></div>
+  <section class="tarjeta" id="detalle" hidden>
+    <h2>Rutas que pasan</h2>
+    <div id="rutas" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+    <h2>Paradas vecinas (un tramo)</h2>
+    <div class="tabla"><table>
+      <thead><tr><th>Parada</th><th>Ruta</th><th>Minutos</th>
+        <th>Estado</th></tr></thead>
+      <tbody id="vecinas"></tbody>
+    </table></div>
+  </section>
+  <div id="cypher"></div>
+</main>
+<script src="app.js"></script>
+<script>
+menu("");
+const $ = id => document.getElementById(id);
+
+async function cargar() {
+  // El id viene en la URL: parada.html?id=centro
+  const id = new URLSearchParams(location.search).get("id") || "";
+  try {
+    // GET /api/paradas/:id
+    const { datos: p } = await api("/paradas/" + encodeURIComponent(id));
+    document.title = p.nombre + " · Rutas de Huejutla";
+    $("titulo").textContent = p.nombre;
+    for (const r of p.rutas) {
+      const chip = etiquetaRuta(r.id, r.color);
+      chip.title = r.nombre;
+      $("rutas").append(chip);
+    }
+    for (const v of p.vecinas) {
+      const tr = el("tr");
+      const celda = el("td");
+      const enlace = el("a", null, v.nombre);
+      enlace.href = "parada.html?id=" + encodeURIComponent(v.id);
+      celda.append(enlace);
+      tr.append(celda, el("td", null, v.ruta), el("td", null, v.minutos),
+        el("td", null, v.cerrado ? "Cerrado" : "Abierto"));
+      $("vecinas").append(tr);
+    }
+    $("detalle").hidden = false;
+    verCypher($("cypher"), p.cypher);
+  } catch (e) {
+    // Por ejemplo: 404 · No existe la parada xyz
+    aviso($("aviso"), e.message, "error");
+  }
+}
+cargar();
+</script>
+</body>
+</html>

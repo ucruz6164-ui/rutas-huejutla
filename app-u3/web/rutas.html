@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rutas · Rutas de Huejutla</title>
+<link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+<main>
+  <h1>Rutas</h1>
+  <p class="nota">Crear y borrar rutas requiere la clave de escritura.
+    Las rutas R1 a R5 no se pueden borrar.</p>
+  <form class="tarjeta" id="nueva">
+    <h2>Nueva ruta</h2>
+    <div class="campos" id="campos">
+      <label>Id <input id="id" value="R6"></label>
+      <label>Nombre
+        <input id="nombre" value="Ruta 6 · Jardines - Hospital">
+      </label>
+      <label>Color <input id="color" type="color" value="#0E7C86">
+      </label>
+      <label>Pasaje ($) <input id="pasaje" type="number" value="12">
+      </label>
+    </div>
+    <label>Paradas en orden (ids separados por coma)
+      <input id="paradas" value="jardines, loma, libramiento, hospital">
+    </label>
+    <label>Minutos de cada tramo (uno menos que las paradas)
+      <input id="minutos" value="7, 5, 4">
+    </label>
+    <button type="submit">Crear ruta</button>
+  </form>
+  <div id="aviso"></div>
+  <section class="tarjeta">
+    <h2>Rutas registradas</h2>
+    <div class="tabla"><table>
+      <thead><tr><th>Ruta</th><th>Nombre</th><th>Paradas</th>
+        <th></th></tr></thead>
+      <tbody id="lista"></tbody>
+    </table></div>
+  </section>
+  <div id="cypher"></div>
+</main>
+<script src="app.js"></script>
+<script>
+menu("rutas.html");
+const $ = id => document.getElementById(id);
+const ORIGINALES = ["R1", "R2", "R3", "R4", "R5"];
+campoClave($("campos"));
+
+// Convierte "a, b, c" en ["a", "b", "c"]
+const lista = texto => texto.split(",").map(x => x.trim())
+  .filter(x => x);
+
+async function cargar() {
+  // GET /api/red (trae las rutas con sus paradas en orden)
+  const { datos } = await api("/red");
+  $("lista").textContent = "";
+  for (const r of datos.rutas) {
+    const tr = el("tr");
+    const chip = el("td");
+    chip.append(etiquetaRuta(r.id, r.color));
+    const accion = el("td");
+    if (!ORIGINALES.includes(r.id)) {
+      const borrar = el("button", "peligro", "Borrar");
+      borrar.addEventListener("click", () => eliminar(r.id));
+      accion.append(borrar);
+    }
+    tr.append(chip, el("td", null, r.nombre),
+      el("td", null, r.paradas.join(" → ")), accion);
+    $("lista").append(tr);
+  }
+}
+
+async function eliminar(id) {
+  try {
+    // DELETE /api/rutas/:id
+    const r = await api("/rutas/" + encodeURIComponent(id), "DELETE");
+    aviso($("aviso"), r.codigo + " · Ruta " + id + " borrada con " +
+      r.datos.tramosBorrados + " tramo(s)", "ok");
+    verCypher($("cypher"), r.datos.cypher);
+    await cargar();
+  } catch (e) {
+    aviso($("aviso"), e.message, "error");
+  }
+}
+
+$("nueva").addEventListener("submit", async evento => {
+  evento.preventDefault();
+  // El cuerpo JSON que se envia a la API
+  const ruta = {
+    id: $("id").value.trim(),
+    nombre: $("nombre").value,
+    color: $("color").value,
+    pasaje: Number($("pasaje").value),
+    paradas: lista($("paradas").value),
+    minutos: lista($("minutos").value).map(Number),
+  };
+  try {
+    // POST /api/rutas -> 201 Created
+    const r = await api("/rutas", "POST", ruta);
+    aviso($("aviso"), r.codigo + " · Ruta " + r.datos.id + " creada",
+      "ok");
+    verCypher($("cypher"), r.datos.cypher);
+    await cargar();
+  } catch (e) {
+    // 400 datos invalidos, 401 clave, 404 parada, 409 ya existe
+    aviso($("aviso"), e.message, "error");
+  }
+});
+
+cargar().catch(e => aviso($("aviso"), e.message, "error"));
+</script>
+</body>
+</html>

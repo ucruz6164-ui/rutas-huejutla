@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tramos · Rutas de Huejutla</title>
+<link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+<main>
+  <h1>Cerrar o abrir tramos</h1>
+  <p class="nota">Simula una calle cerrada. Abre "La red" en otra
+    ventana o en tu celular: se actualiza sola en unos segundos.</p>
+  <div class="tarjeta campos" id="campos"></div>
+  <div id="aviso"></div>
+  <section id="mapa"></section>
+  <section class="tarjeta">
+    <div class="tabla"><table>
+      <thead><tr><th>Ruta</th><th>Tramo</th><th>Minutos</th>
+        <th>Estado</th></tr></thead>
+      <tbody id="tramos"></tbody>
+    </table></div>
+  </section>
+  <div id="cypher"></div>
+</main>
+<script src="app.js"></script>
+<script>
+menu("tramos.html");
+const $ = id => document.getElementById(id);
+campoClave($("campos"));
+
+async function cargar() {
+  // GET /api/red
+  const { datos: red } = await api("/red");
+  const nombre = id => red.paradas.find(p => p.id === id).nombre;
+  const color = id => red.rutas.find(r => r.id === id).color;
+  dibujarMapa($("mapa"), red);
+  $("tramos").textContent = "";
+  for (const t of red.tramos) {
+    const tr = el("tr");
+    const ruta = el("td");
+    ruta.append(etiquetaRuta(t.ruta, color(t.ruta)));
+    const boton = el("button", t.cerrado ? "peligro" : "",
+      t.cerrado ? "Cerrado · abrir" : "Abierto · cerrar");
+    boton.addEventListener("click", () => cambiar(t));
+    const estado = el("td");
+    estado.append(boton);
+    tr.append(ruta, el("td", null, nombre(t.a) + " – " + nombre(t.b)),
+      el("td", null, t.minutos), estado);
+    $("tramos").append(tr);
+  }
+}
+
+async function cambiar(t) {
+  try {
+    // PATCH /api/tramos  {a, b, cerrado}: dice el estado final
+    const r = await api("/tramos", "PATCH",
+      { a: t.a, b: t.b, cerrado: !t.cerrado });
+    aviso($("aviso"), r.codigo + " · Tramo " + (t.cerrado ?
+      "abierto" : "cerrado"), "ok");
+    verCypher($("cypher"), r.datos.cypher);
+    await cargar();
+  } catch (e) {
+    aviso($("aviso"), e.message, "error");
+  }
+}
+
+cargar().catch(e => aviso($("aviso"), e.message, "error"));
+</script>
+</body>
+</html>

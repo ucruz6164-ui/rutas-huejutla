@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Como llego · Rutas de Huejutla</title>
+<link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+<main>
+  <h1>¿Como llego?</h1>
+  <p class="nota">La API recorre el grafo y devuelve las 3 mejores
+    opciones. Cada transbordo suma 5 minutos de espera.</p>
+  <form class="tarjeta campos" id="buscar">
+    <label>Desde <select id="origen"></select></label>
+    <label>Hasta <select id="destino"></select></label>
+    <label>Ordenar por
+      <select id="orden">
+        <option value="tiempo">Menos tiempo</option>
+        <option value="costo">Menor costo</option>
+        <option value="transbordos">Menos transbordos</option>
+      </select>
+    </label>
+    <button type="submit">Buscar ruta</button>
+  </form>
+  <div id="aviso"></div>
+  <div class="rejilla">
+    <section id="opciones" style="display:grid;gap:12px;
+      align-content:start"></section>
+    <section id="mapa"></section>
+  </div>
+  <section class="tarjeta" style="justify-items:center;
+    text-align:center">
+    <h2>Abre esta pagina en tu celular</h2>
+    <div id="qr" style="background:#fff;padding:8px;
+      border-radius:8px;line-height:0"></div>
+    <p class="nota">El puerto 3000 debe estar en Public.</p>
+  </section>
+  <div id="cypher"></div>
+</main>
+<script src="app.js"></script>
+<script>
+menu("index.html");
+const $ = id => document.getElementById(id);
+// red: paradas, tramos y rutas (para el mapa, nombres y colores)
+let red;
+const nombre = id => red.paradas.find(p => p.id === id).nombre;
+const colorDe = ruta => red.rutas.find(r => r.id === ruta).color;
+
+async function iniciar() {
+  // GET /api/red
+  red = (await api("/red")).datos;
+  for (const id of ["origen", "destino"]) {
+    for (const p of red.paradas) {
+      const o = el("option", null, p.nombre);
+      o.value = p.id;
+      $(id).append(o);
+    }
+  }
+  $("origen").value = "rio";
+  $("destino").value = "uthh";
+  dibujarMapa($("mapa"), red);
+}
+
+// Agrupa los tramos seguidos de la misma ruta en un solo paso:
+// "Sube a R1 en X y baja en Y (n tramos)"
+function pasos(op) {
+  const lista = [];
+  let inicio = 0;
+  for (let i = 1; i <= op.rutas.length; i++) {
+    if (i === op.rutas.length || op.rutas[i] !== op.rutas[i - 1]) {
+      lista.push({ ruta: op.rutas[inicio], desde: op.paradas[inicio],
+        hasta: op.paradas[i], tramos: i - inicio });
+      inicio = i;
+    }
+  }
+  return lista;
+}
+
+function mostrar(r) {
+  const cont = $("opciones");
+  cont.textContent = "";
+  if (!r.opciones.length) {
+    aviso(cont, "No hay forma de llegar: revisa los tramos cerrados.",
+      "error");
+    return dibujarMapa($("mapa"), red);
+  }
+  r.opciones.forEach((op, k) => {
+    const t = el("article", "tarjeta opcion" + (k ? "" : " activa"));
+    const titulo = k === 0 ? "Recomendada" : "Opcion " + (k + 1);
+    t.append(el("h3", null, titulo + " · " + op.tiempoTotal + " min"));
+    t.append(el("p", "nota", op.minutos + " min en combi · " +
+      op.transbordos + " transbordo(s) · $" + op.costo));
+    for (const p of pasos(op)) {
+      const linea = el("div", "paso");
+      linea.append(etiquetaRuta(p.ruta, colorDe(p.ruta)),
+        el("span", null, "Sube en " + nombre(p.desde) + " y baja en " +
+          nombre(p.hasta) + " (" + p.tramos + " tramo" +
+          (p.tramos > 1 ? "s" : "") + ")"));
+      t.append(linea);
+    }
+    t.addEventListener("click", () => {
+      cont.querySelectorAll(".opcion")
+        .forEach(x => x.classList.remove("activa"));
+      t.classList.add("activa");
+      dibujarMapa($("mapa"), red,
+        { camino: op.paradas, rutas: op.rutas });
+    });
+    cont.append(t);
+  });
+  const mejor = r.opciones[0];
+  dibujarMapa($("mapa"), red,
+    { camino: mejor.paradas, rutas: mejor.rutas });
+}
+
+$("buscar").addEventListener("submit", async evento => {
+  evento.preventDefault();
+  try {
+    // URLSearchParams codifica los valores para la URL
+    const p = new URLSearchParams({ origen: $("origen").value,
+      destino: $("destino").value, orden: $("orden").value });
+    // GET /api/como-llego?origen=...&destino=...&orden=...
+    const { datos } = await api("/como-llego?" + p);
+    mostrar(datos);
+    verCypher($("cypher"), datos.cypher);
+    aviso($("aviso"), "");
+  } catch (e) {
+    aviso($("aviso"), e.message, "error");
+  }
+});
+
+// Codigo QR hacia esta misma pagina (biblioteca desde un CDN)
+const qrjs = document.createElement("script");
+qrjs.src = "https://cdnjs.cloudflare.com/ajax/libs/" +
+  "qrcode-generator/1.4.4/qrcode.min.js";
+qrjs.onload = () => {
+  const q = qrcode(0, "M");
+  q.addData(location.origin + "/index.html");
+  q.make();
+  $("qr").innerHTML = q.createSvgTag(5, 2);
+};
+document.head.append(qrjs);
+
+iniciar().catch(e => aviso($("aviso"), e.message, "error"));
+</script>
+</body>
+</html>

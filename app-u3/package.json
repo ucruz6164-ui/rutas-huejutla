@@ -1,0 +1,13 @@
+{
+  "name": "rutas-huejutla-u3",
+  "version": "1.0.0",
+  "description": "Rutas de Huejutla: API REST y aplicacion web sobre Neo4j",
+  "main": "servidor.js",
+  "private": true,
+  "scripts": {
+    "start": "node servidor.js"
+  },
+  "dependencies": {
+    "neo4j-driver": "^5.28.1"
+  }
+}

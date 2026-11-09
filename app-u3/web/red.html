@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>La red · Rutas de Huejutla</title>
+<link rel="stylesheet" href="estilos.css">
+</head>
+<body>
+<main>
+  <h1>La red de combis</h1>
+  <p class="nota">Toca una parada para ver su detalle. El mapa se
+    actualiza solo si alguien cierra o abre un tramo.</p>
+  <form class="tarjeta campos" id="filtro">
+    <label>¿Que alcanzo desde? <select id="origen"></select></label>
+    <label>En cuantos minutos
+      <select id="minutos">
+        <option>10</option><option selected>15</option>
+        <option>20</option><option>30</option>
+      </select>
+    </label>
+    <p class="vivo" id="vivo">● En vivo</p>
+  </form>
+  <div id="aviso"></div>
+  <section id="mapa"></section>
+  <div class="rejilla">
+    <section class="tarjeta">
+      <h2>Rutas</h2>
+      <div id="rutas" style="display:grid;gap:8px"></div>
+    </section>
+    <section class="tarjeta">
+      <h2>Mejores paradas para transbordar</h2>
+      <div class="tabla"><table>
+        <thead><tr><th>Parada</th><th>Rutas que pasan</th></tr></thead>
+        <tbody id="conectadas"></tbody>
+      </table></div>
+    </section>
+  </div>
+  <div id="cypher"></div>
+</main>
+<script src="app.js"></script>
+<script>
+menu("red.html");
+const $ = id => document.getElementById(id);
+let red;
+// firma de los tramos cerrados: si cambia, se vuelve a dibujar
+let firma = "";
+
+async function cargarRed() {
+  // GET /api/red
+  red = (await api("/red")).datos;
+  firma = red.tramos.filter(t => t.cerrado)
+    .map(t => t.ruta + t.a + t.b).sort().join();
+  $("rutas").textContent = "";
+  for (const r of red.rutas) {
+    const d = el("div", "paso");
+    d.append(etiquetaRuta(r.id, r.color), el("span", null,
+      r.nombre + " · $" + r.pasaje + ": " + r.paradas.join(" → ")));
+    $("rutas").append(d);
+  }
+}
+
+async function iniciar() {
+  await cargarRed();
+  for (const p of red.paradas) {
+    const o = el("option", null, p.nombre);
+    o.value = p.id;
+    $("origen").append(o);
+  }
+  $("origen").value = "centro";
+  // GET /api/conectadas
+  const { datos: c } = await api("/conectadas");
+  for (const f of c.conectadas) {
+    const tr = el("tr");
+    const celda = el("td");
+    const enlace = el("a", null, f.nombre);
+    enlace.href = "parada.html?id=" + encodeURIComponent(f.id);
+    celda.append(enlace);
+    tr.append(celda, el("td", null,
+      f.rutas + " (" + f.cuales.join(", ") + ")"));
+    $("conectadas").append(tr);
+  }
+  await cargarAlcance();
+  // Sondeo: cada 10 s pregunta solo por los tramos cerrados
+  setInterval(revisar, 10000);
+}
+
+async function cargarAlcance() {
+  try {
+    const p = new URLSearchParams({ origen: $("origen").value,
+      minutos: $("minutos").value });
+    // GET /api/alcance?origen=...&minutos=...
+    const { datos: r } = await api("/alcance?" + p);
+    const marcas = { [r.origen]: 0 };
+    for (const x of r.alcance) marcas[x.id] = x.minutos;
+    dibujarMapa($("mapa"), red, { alcance: marcas });
+    verCypher($("cypher"), r.cypher);
+    aviso($("aviso"), "");
+  } catch (e) {
+    aviso($("aviso"), e.message, "error");
+  }
+}
+
+// GET /api/tramos/cerrados : respuesta pequena, cada 10 segundos
+async function revisar() {
+  try {
+    const { datos } = await api("/tramos/cerrados");
+    const nueva = datos.cerrados.map(t => t.ruta + t.a + t.b)
+      .sort().join();
+    const hora = new Date(datos.revisado).toLocaleTimeString();
+    $("vivo").textContent = "● En vivo · revisado " + hora + " · " +
+      datos.cerrados.length + " tramo(s) cerrado(s)";
+    if (nueva !== firma) {
+      await cargarRed();
+      await cargarAlcance();
+    }
+  } catch (e) {
+    $("vivo").textContent = "● Sin conexion";
+  }
+}
+
+$("filtro").addEventListener("change", cargarAlcance);
+iniciar().catch(e => aviso($("aviso"), e.message, "error"));
+</script>
+</body>
+</html>
